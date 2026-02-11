@@ -53,7 +53,7 @@ else:
 model = None
 model_path = None
 
-def load_model(model_file='fusion_concat_unified_nhanes_20260205_233056_best.pth'):
+def load_model(model_file='fusion_concat_unified_nhanes_20260211_152647_best.pth'):
     """Load the trained fusion model"""
     global model, model_path
     
@@ -103,14 +103,14 @@ def load_model(model_file='fusion_concat_unified_nhanes_20260205_233056_best.pth
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def create_synthetic_image(disease_class, height=128, width=128):
+def create_synthetic_image(disease_class, height=224, width=224):
     """Create a synthetic CT-like image for demo purposes"""
     np.random.seed(None)
     img = np.random.normal(0.5, 0.12, size=(height, width)).astype(np.float32)
     
     rr, cc = np.ogrid[:height, :width]
     center = (height // 2, width // 2)
-    radius = 32 + disease_class * 4
+    radius = 56 + disease_class * 7  # Scaled for 224x224
     mask = (rr - center[0])**2 + (cc - center[1])**2 <= radius**2
     
     if disease_class == 0:  # Normal
@@ -126,7 +126,9 @@ def create_synthetic_image(disease_class, height=128, width=128):
         img[ring] += np.random.uniform(0.3, 0.7)
     
     img = np.clip(img, 0.0, 1.0)
-    return torch.from_numpy(img[np.newaxis, ...])
+    # Apply same normalization as training: (x - 0.5) / 0.5
+    img = (img - 0.5) / 0.5
+    return torch.from_numpy(img[np.newaxis, ...].astype(np.float32))
 
 def get_lab_values(disease_class):
     """Get synthetic lab values for a disease class"""
@@ -197,24 +199,29 @@ def predict():
             img = dcm.pixel_array.astype(np.float32)
             # Normalize to [0,1]
             img = (img - img.min()) / (img.max() - img.min() + 1e-5)
-            # Resize to 128x128 if needed
+            # Apply same normalization as training: (x - 0.5) / 0.5
+            img = (img - 0.5) / 0.5
+            # Resize to 224x224 to match training
             from torchvision.transforms.functional import resize
             img_tensor = torch.from_numpy(img).unsqueeze(0)  # [1, H, W]
-            if img_tensor.shape[1] != 128 or img_tensor.shape[2] != 128:
-                img_tensor = resize(img_tensor, [128, 128])
+            if img_tensor.shape[1] != 224 or img_tensor.shape[2] != 224:
+                img_tensor = resize(img_tensor, [224, 224])
         else:
             img = Image.open(file.stream).convert('L')  # Grayscale
-            img = img.resize((128, 128))
+            img = img.resize((224, 224))  # Must match training size
             img_array = np.array(img, dtype=np.float32) / 255.0
+            # Apply same normalization as training: (x - 0.5) / 0.5
+            img_array = (img_array - 0.5) / 0.5
             img_tensor = torch.from_numpy(img_array).float()
             if img_tensor.dim() == 2:
                 img_tensor = img_tensor.unsqueeze(0)
         # Add batch dimension later before model call
 
-        # Normalize lab values (simple z-score like normalization)
+        # Normalize lab values using NHANES statistics (must match training)
         labs = np.array([crp, wbc, hb], dtype=np.float32)
-        means = np.array([20.0, 9.5, 12.5])
-        stds = np.array([20.0, 3.5, 1.5])
+        # NHANES stats: CRP, WBC, Hemoglobin
+        means = np.array([3.44, 7.38, 13.74])
+        stds = np.array([7.41, 5.19, 1.51])
         labs_normalized = (labs - means) / stds
         labs_tensor = torch.from_numpy(labs_normalized).float()
         
@@ -278,10 +285,10 @@ def predict_demo():
         img_tensor = create_synthetic_image(disease_class)
         labs_dict = get_lab_values(disease_class)
         
-        # Normalize labs
+        # Normalize labs using NHANES statistics (must match training)
         labs = np.array([labs_dict['crp'], labs_dict['wbc'], labs_dict['hb']], dtype=np.float32)
-        means = np.array([20.0, 9.5, 12.5])
-        stds = np.array([20.0, 3.5, 1.5])
+        means = np.array([3.44, 7.38, 13.74])
+        stds = np.array([7.41, 5.19, 1.51])
         labs_normalized = (labs - means) / stds
         labs_tensor = torch.from_numpy(labs_normalized)
         
