@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Disease Classifier - Multimodal AI System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🏥 Disease Classifier</h1>
+                <p class="subtitle">Multimodal AI System for CT Image Analysis + Lab Values</p>
+                <div class="status-badge">
+                    <span id="status-indicator" class="status-dot"></span>
+                    <span id="status-text">Initializing...</span>
+                </div>
+                <div id="gpu-stats" class="gpu-stats" style="display:none; margin-top: 15px;">
+                    <span id="gpu-device" style="margin-right: 20px;"></span>
+                    <span id="gpu-memory"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Tabs Navigation -->
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="upload">📤 Upload & Predict</button>
+                <button class="tab-btn" data-tab="demo">🎮 Demo Mode</button>
+                <button class="tab-btn" data-tab="about">ℹ️ About</button>
+            </div>
+
+            <!-- Tab: Upload & Predict -->
+            <div id="upload" class="tab-content active">
+                <div class="card">
+                    <h2>Upload CT Image + Lab Values</h2>
+                    
+                    <div class="upload-section">
+                        <div class="image-upload-area" id="dropZone">
+                            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                            <p>Drag and drop your CT image here</p>
+                            <p class="small">or click to browse (PNG, JPG, JPEG, DCM)</p>
+                            <input type="file" id="imageInput" accept=".png,.jpg,.jpeg,.dcm" hidden>
+                        </div>
+                        <div id="imagePreview" class="image-preview" style="display:none;">
+                            <img id="previewImg" src="" alt="Preview">
+                            <button class="btn-small" onclick="clearImage()">✕ Clear</button>
+                        </div>
+                    </div>
+
+                    <div class="lab-values-section">
+                        <h3>Lab Values</h3>
+                        <p class="help-text">Enter your lab measurements or use typical ranges</p>
+                        
+                        <div class="lab-inputs">
+                            <div class="lab-input-group">
+                                <label for="crp">CRP (mg/L)</label>
+                                <input type="number" id="crp" value="10" min="0" max="100" step="0.1">
+                                <span class="lab-hint">Normal: &lt; 3</span>
+                            </div>
+                            
+                            <div class="lab-input-group">
+                                <label for="wbc">WBC (x10⁹/L)</label>
+                                <input type="number" id="wbc" value="7" min="0" max="30" step="0.1">
+                                <span class="lab-hint">Normal: 4.5 - 11</span>
+                            </div>
+                            
+                            <div class="lab-input-group">
+                                <label for="hb">Hb (g/dL)</label>
+                                <input type="number" id="hb" value="14" min="5" max="20" step="0.1">
+                                <span class="lab-hint">Normal: 12 - 16</span>
+                            </div>
+                        </div>
+
+                        <div class="quick-presets">
+                            <button class="preset-btn" onclick="setLabPreset('normal')">Normal</button>
+                            <button class="preset-btn" onclick="setLabPreset('tumor')">Tumor</button>
+                            <button class="preset-btn" onclick="setLabPreset('infection')">Infection</button>
+                            <button class="preset-btn" onclick="setLabPreset('inflammatory')">Inflammatory</button>
+                        </div>
+                    </div>
+
+                    <button id="predictBtn" class="btn-primary" onclick="predictImage()" disabled>
+                        🔍 Analyze
+                    </button>
+                </div>
+
+                <!-- Results Section -->
+                <div id="resultsSection" class="card" style="display:none;">
+                    <h2>Prediction Results</h2>
+                    
+                    <div class="results-grid">
+                        <div class="result-card">
+                            <h3>Predicted Class</h3>
+                            <p class="result-value" id="resultClass">-</p>
+                            <p class="result-confidence" id="resultConfidence">-</p>
+                        </div>
+                        
+                        <div class="result-card">
+                            <h3>Confidence Score</h3>
+                            <div class="confidence-bar">
+                                <div id="confidenceBarFill" class="confidence-fill"></div>
+                            </div>
+                            <p id="confidencePercent">0%</p>
+                        </div>
+                    </div>
+
+                    <div class="probabilities-section">
+                        <h3>Class Probabilities</h3>
+                        <div id="probabilitiesContainer" class="probabilities-grid"></div>
+                    </div>
+
+                    <div class="explanation-box">
+                        <h3>Clinical Interpretation</h3>
+                        <p id="explanation">-</p>
+                    </div>
+
+                    <div class="lab-summary">
+                        <h3>Analyzed Lab Values</h3>
+                        <div class="lab-summary-grid">
+                            <div class="lab-summary-item">
+                                <span class="lab-label">CRP:</span>
+                                <span id="summarycrp" class="lab-value">-</span>
+                            </div>
+                            <div class="lab-summary-item">
+                                <span class="lab-label">WBC:</span>
+                                <span id="summarywbc" class="lab-value">-</span>
+                            </div>
+                            <div class="lab-summary-item">
+                                <span class="lab-label">Hb:</span>
+                                <span id="summaryhb" class="lab-value">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Demo Mode -->
+            <div id="demo" class="tab-content">
+                <div class="card">
+                    <h2>Demo Mode - Synthetic Data</h2>
+                    <p class="help-text">Test the model with synthetic CT images and lab values</p>
+                    
+                    <div class="demo-grid">
+                        <div class="demo-card" onclick="runDemo(0)">
+                            <div class="demo-icon">✓</div>
+                            <h3>Normal</h3>
+                            <p>Healthy CT scan with normal lab values</p>
+                        </div>
+                        <div class="demo-card" onclick="runDemo(1)">
+                            <div class="demo-icon">🔴</div>
+                            <h3>Tumor</h3>
+                            <p>Tumor with elevated CRP and low Hb</p>
+                        </div>
+                        <div class="demo-card" onclick="runDemo(2)">
+                            <div class="demo-icon">⚠️</div>
+                            <h3>Infection</h3>
+                            <p>Infection with high CRP and WBC</p>
+                        </div>
+                        <div class="demo-card" onclick="runDemo(3)">
+                            <div class="demo-icon">🔶</div>
+                            <h3>Inflammatory</h3>
+                            <p>Inflammation with elevated CRP</p>
+                        </div>
+                    </div>
+
+                    <div id="demoResultsSection" class="card" style="display:none; margin-top: 30px;">
+                        <h2>Demo Results</h2>
+                        
+                        <div class="demo-results">
+                            <div class="result-item">
+                                <span class="label">True Class:</span>
+                                <span id="demoTrueClass" class="value">-</span>
+                            </div>
+                            <div class="result-item">
+                                <span class="label">Predicted Class:</span>
+                                <span id="demoPredictedClass" class="value">-</span>
+                            </div>
+                            <div class="result-item">
+                                <span class="label">Confidence:</span>
+                                <span id="demoConfidence" class="value">-</span>
+                            </div>
+                        </div>
+
+                        <div class="probabilities-section">
+                            <h3>Probabilities</h3>
+                            <div id="demoProbabilities" class="probabilities-grid"></div>
+                        </div>
+
+                        <div class="explanation-box">
+                            <h3>Interpretation</h3>
+                            <p id="demoExplanation">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: About -->
+            <div id="about" class="tab-content">
+                <div class="card">
+                    <h2>About This System</h2>
+                    
+                    <div class="about-section">
+                        <h3>🎯 Overview</h3>
+                        <p>This is a disease-agnostic multimodal AI framework that predicts diseases using:</p>
+                        <ul>
+                            <li><strong>CT Images:</strong> 2D CT scan slices (128×128 pixels)</li>
+                            <li><strong>Lab Values:</strong> CRP, WBC, and Hemoglobin (Hb)</li>
+                        </ul>
+                    </div>
+
+                    <div class="about-section">
+                        <h3>🔬 Disease Classes</h3>
+                        <ul>
+                            <li><strong>Normal:</strong> Healthy CT findings with normal lab values</li>
+                            <li><strong>Tumor:</strong> Mass detected with characteristic lab pattern</li>
+                            <li><strong>Infection:</strong> Inflammatory infiltrates with elevated infection markers</li>
+                            <li><strong>Inflammatory:</strong> Non-infectious inflammation indicators</li>
+                        </ul>
+                    </div>
+
+                    <div class="about-section">
+                        <h3>🔬 Lab Biomarkers</h3>
+                        <table class="lab-table">
+                            <tr>
+                                <th>Marker</th>
+                                <th>Unit</th>
+                                <th>Normal Range</th>
+                                <th>Significance</th>
+                            </tr>
+                            <tr>
+                                <td><strong>CRP</strong> (C-Reactive Protein)</td>
+                                <td>mg/L</td>
+                                <td>&lt; 3</td>
+                                <td>Infection, Inflammation marker</td>
+                            </tr>
+                            <tr>
+                                <td><strong>WBC</strong> (White Blood Cells)</td>
+                                <td>x10⁹/L</td>
+                                <td>4.5 - 11</td>
+                                <td>Immune response indicator</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Hb</strong> (Hemoglobin)</td>
+                                <td>g/dL</td>
+                                <td>12 - 16</td>
+                                <td>Oxygen carrying capacity, Anemia indicator</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <div class="about-section">
+                        <h3>💡 How It Works</h3>
+                        <ol>
+                            <li><strong>Image Processing:</strong> CT image is resized to 128×128 and normalized</li>
+                            <li><strong>Lab Normalization:</strong> Lab values are z-score normalized</li>
+                            <li><strong>CNN Encoder:</strong> Image features extracted via convolutional layers</li>
+                            <li><strong>MLP Encoder:</strong> Lab features encoded via dense layers</li>
+                            <li><strong>Fusion:</strong> Image and lab features concatenated</li>
+                            <li><strong>Classification:</strong> Softmax classifier predicts disease class</li>
+                        </ol>
+                    </div>
+
+                    <div class="about-section">
+                        <h3>⚠️ Important Disclaimer</h3>
+                        <p style="color: #d32f2f; font-weight: bold;">This system is for research and demonstration purposes only. 
+                        It should NOT be used for actual clinical diagnosis without proper validation and oversight by licensed medical professionals.</p>
+                    </div>
+
+                    <div class="about-section">
+                        <h3>📊 Model Performance (Test Set)</h3>
+                        <ul>
+                            <li>Accuracy: 100.00%</li>
+                            <li>Precision (macro): 100.00%</li>
+                            <li>Recall (macro): 100.00%</li>
+                            <li>F1 Score (macro): 100.00%</li>
+                            <li>ROC-AUC (macro): 100.00%</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Loading Indicator -->
+        <div id="loadingIndicator" class="loading-indicator">
+            <div class="spinner"></div>
+            <p>Processing...</p>
+        </div>
+
+        <!-- Error Toast -->
+        <div id="errorToast" class="toast error" style="display:none;">
+            <span id="errorMessage">Error message</span>
+            <button onclick="closeToast()" class="toast-close">✕</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
