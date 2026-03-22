@@ -185,8 +185,8 @@ If you use this framework, please cite:
 ```
 @article{multimodal_disease_2024,
   title={Disease-Agnostic Multimodal Framework for CT-based Disease Classification with Minimal Lab Values},
-  author={Your Name},
-  year={2024}
+  author={Ashutosh Ranjan},
+  year={2026}
 }
 ```
 
